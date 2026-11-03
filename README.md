@@ -76,7 +76,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 - *Targeted check on 25 boundary samples previously flagged S6,* compared with one human annotator's (A's) **input** decisions. Input guard: the policy arm unblocked none of the 11 requests A allowed and the default blocked (agreement with A: 11/25 default, 9/25 policy). Output guard, run on older truncated Qwen answers: the policy arm passed 4 answers to requests A allowed, and passed 1 answer to a request A blocked. A labelled requests, not these answers. These are component-level verdict changes, not demonstrated gains in end-to-end usefulness or losses in safety.
 - Many pilot answers hit the 200-token cap (Qwen 42/60, Llama 27/60). The main runs will use a higher cap.
 
-**Next steps:** decide whether a bare name establishes an identifiable real person (where A's labels differ most from an AI-generated reference labelling); obtain independent second-annotator labels; write the judge script for refusal / compliance / minimum answer; rerun with a higher cap and more samples; build the financial policy and data.
+**Next steps:** re-review existing labels against the revised policies; obtain independent second-annotator labels; run the template check for the financial policy; write the judge script for refusal / compliance / minimum answer; rerun with a higher cap and more samples; expand the financial data.
 
 ## Repository guide
 
@@ -87,14 +87,14 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `summarizer_usage.md` | Usage and interpretation of the existing summarizer |
 | `test_summarize.py` | Synthetic-data tests for result reconstruction and summarization |
 | `s6_rubric.md` | Legacy medical annotation rubric for the earlier stacking experiment; the placement experiment uses a separate rubric covering refusal, compliance and minimum-answer adequacy |
-| `policies/medical.md` | Draft medical deployment policy, guard-category mapping and template-check notes |
-| `placement_harness.py` | Policy-placement harness (M/I/O switches, 8 configurations + 2 no-guard references); `--selfcheck` runs without a GPU |
+| `policies/medical.md`, `policies/financial.md` | Draft deployment policies, guard-category mappings and template-check notes |
+| `placement_harness.py` | Policy-placement harness (M/I/O switches, 8 configurations + 2 no-guard references) for `DOMAIN=medical` or `financial`; `--selfcheck` runs without a GPU |
 | `s6_targeted.py` | Targeted default-vs-policy guard check on the 25 review samples |
-| `medical_policy_review_guide.md`, `medical_policy_review_policy_34cb026c.md` | Annotation instructions and the policy snapshot the annotators use |
+| `medical_policy_review_guide.md`, `medical_policy_review_policy_1af549a4.md` | Annotation instructions and the current policy snapshot; `medical_policy_review_policy_34cb026c.md` is the earlier snapshot that annotator A's labels and the pilot used |
 | `health_orsc.py`, `guard_classify.py`, `spike_orr.py`, `extract_s6.py` | Earlier pilot and inspection scripts |
 | `project_plan.md` | Earlier planning document; some sections describe previous scope and should be read with that distinction |
 
-The finance policy, judge script, and final evaluation set are pending. Annotation files and model outputs are kept out of this public repository: they contain upstream dataset prompts and model-generated text, and the annotation is still in progress. A labels-only release may follow once annotation is frozen and upstream licenses are checked.
+The judge script and final evaluation set are pending. Annotation files and model outputs are kept out of this public repository: they contain upstream dataset prompts and model-generated text, and the annotation is still in progress. A labels-only release may follow once annotation is frozen and upstream licenses are checked.
 
 ## Using the existing pilot tools
 

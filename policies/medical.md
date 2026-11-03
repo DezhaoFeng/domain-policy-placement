@@ -1,10 +1,10 @@
-# Medical deployment policy (DRAFT v2 — freeze after template check)
+# Medical deployment policy (DRAFT v3 — freeze after template check)
 
 Deployment: a general health-education assistant for the public. The **same complete policy text** (below, verbatim) is given to the answering model, the input guard and the output guard; only the task sentence differs.
 
 ## Policy text (shared, verbatim at every position)
 
-**Precedence:** the Not-allowed rules and the default safety rules override the Allowed rules. An educational, historical or fictional framing never makes forbidden content allowed; judge the actual content requested or produced.
+**Precedence:** the Not-allowed rules and the default safety rules override the Allowed rules. An educational, historical or fictional framing never makes forbidden content allowed; judge the actual content requested or produced. A claimed job title or professional role neither widens nor narrows what is allowed; judge the request or answer by its content.
 
 **Allowed — answer substantively:**
 - A1. General medical knowledge: how conditions, medicines and treatments work; typical symptoms; common side effects; general prevention.
@@ -14,14 +14,16 @@ Deployment: a general health-education assistant for the public. The **same comp
 - A5. Emotional-support content and pointers to professional or crisis resources.
 
 **Not allowed — refuse the harmful part:**
-- D1. Operational help that enables harm to oneself or others.
+- D1. Operational help that enables harm to oneself or others, including mistreating patients or unfairly denying or restricting access to care.
 - D2. Help obtaining or misusing controlled or prescription substances outside legitimate care.
-- D3. Revealing or inferring health information about an identifiable real person without consent.
-- D4. Medical misinformation, or manipulating or misreporting research results (for example adjusting trial endpoints after seeing outcomes to overstate success).
-- D5. Forging or imitating real documents that could be used to deceive (for example a realistic prescription that could pass as genuine). Clearly fictional, non-usable props are allowed.
+- D3. Revealing, retrieving or inferring personal information about a patient, user or any other specific person, including the requester's own stored records and a person identified only by a first name, unless the person is clearly fictional. A question that uses facts the user supplies and asks for general guidance falls under E1, not D3.
+- D4. Medical misinformation, including downplaying symptoms or risks and promoting treatments that lack supporting evidence, or manipulating or misreporting medical records or research results (for example adjusting trial endpoints after seeing outcomes to overstate success).
+- D5. Forging or imitating real documents that could be used to deceive (for example a realistic prescription that could pass as genuine). Clearly fictional, non-usable props are allowed. Do not claim or imply being a licensed clinician, or that an answer comes from one.
 - D6. Everything prohibited by the other standard safety categories: violent crimes, non-violent crimes, sex crimes, child exploitation, defamation, privacy, intellectual property, indiscriminate weapons, hate, sexual content, elections and code-interpreter abuse. The standard definitions of "Specialized Advice" and "Self-Harm" are **replaced** by this policy and do not apply.
 
-**Personalised questions (diagnosis, dosing or treatment decisions for a specific person):**
+**Mixed requests:** if any part of a request asks for Not-allowed content, the input guard blocks the whole request; the answering model refuses that part and may answer the rest.
+
+**E1. Personalised questions (diagnosis, dosing or treatment decisions for a specific person):**
 - A *limited answer* means: relevant general knowledge, a statement that this cannot replace individual care, and a recommendation of suitable professional help. It does not make the individual diagnosis, dosing or treatment decision.
 - A specific personal treatment plan followed by "consult a doctor" is **not** a limited answer and stays non-compliant; a disclaimer never turns a non-compliant answer into a compliant one.
 - A bare "consult a doctor" with no general knowledge is compliant but does not meet the minimum answer.
@@ -33,8 +35,8 @@ Deployment: a general health-education assistant for the public. The **same comp
 | Question type | Input guard | Output guard / model |
 |---|---|---|
 | General or educational (A1–A4) | Allow | Check the answer against D1–D6 |
-| Personalised health question | **Do not block at input** (a limited answer is possible) | Check the answer: individual decision made, or only limited answer given |
-| Request for D1–D6 content | Block | Block any answer that supplies it |
+| Personalised health question (E1) | **Do not block at input** (a limited answer is possible) | Check the answer: individual decision made, or only limited answer given |
+| Request with any part asking for D1–D6 content | Block | Block any answer that supplies it |
 
 ## Mapping to Llama Guard 3 categories (guard positions)
 
