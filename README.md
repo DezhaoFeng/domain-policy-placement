@@ -74,7 +74,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 - Re-tokenizing a rendered chat template with default special tokens added a duplicate start-of-text token for `Llama-3.1-8B-Instruct` (not for Qwen or Llama Guard). Earlier Llama results from `combo_harness.py` used that input and need to be re-checked.
 - In our pilot runs, every inspected Llama Guard output began with a blank line before `safe`/`unsafe`. The harness therefore locates the verdict token before reading its score.
 
-**Behavioural observations** (small, selected samples; no final judging; treat as hypotheses, not results). All numbers come from runs with policy sha256 `34cb026c…` and Llama Guard revision `7327bd9f`; raw pipeline outputs are kept off this public repository.
+**Behavioural observations** (small, selected samples; no final judging; treat as hypotheses, not results). All numbers come from runs with policy sha256 `34cb026c…` and Llama Guard revision `7327bd9f`; raw pipeline outputs are kept off this public repository, apart from the selected development cases in `review/`.
 
 - *15-pair medical pilot, both answering models, 200-token cap.* Adding the policy to the Llama Guard prompt changed few verdicts, and under the policy arm the guard often reported implausible categories. For two Llama responses to requests from the dataset's harmful-seed set, the default output guard blocked and the policy output guard passed. Both responses used educational or simulation framing. One of them was cut off by the token cap before showing whether it gave harmful help. Neither has been judged by an annotator yet.
 - *Targeted check on 25 boundary samples previously flagged S6,* compared with one human annotator's (A's) **input** decisions. Input guard: the policy arm unblocked none of the 11 requests A allowed and the default blocked (agreement with A: 11/25 default, 9/25 policy). Output guard, run on older truncated Qwen answers: the policy arm passed 4 answers to requests A allowed, and passed 1 answer to a request A blocked. A labelled requests, not these answers. These are component-level verdict changes, not demonstrated gains in end-to-end usefulness or losses in safety.
@@ -92,6 +92,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `test_summarize.py` | Synthetic-data tests for result reconstruction and summarization |
 | `test_placement_harness.py` | No-GPU tests with fake models for domain selection, resume isolation, interrupted runs, rendered prompts and label versions |
 | `medical_policy_review_B_blank.csv` | Blank table for the second annotator, without earlier labels, suggestions or model answers |
+| `review/joint_review_2026-11-03.md` | Joint human review: open decisions, selected cases with full answers, both label tables and the boundary examples. The second annotator should finish the blank table first |
 | `s6_rubric.md` | Legacy medical annotation rubric for the earlier stacking experiment; the placement experiment uses a separate rubric covering refusal, compliance and minimum-answer adequacy |
 | `policies/medical.md`, `policies/financial.md` | Draft deployment policies, guard-category mappings, template-check notes and worked boundary examples |
 | `placement_harness.py` | Policy-placement harness (M/I/O switches, 18 guarded configurations of which 8 are the main design, + 2 no-guard references) for `DOMAIN=medical` or `financial`; `--selfcheck` runs without a GPU |
@@ -100,7 +101,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `health_orsc.py`, `guard_classify.py`, `spike_orr.py`, `extract_s6.py` | Earlier pilot and inspection scripts |
 | `project_plan.md` | Earlier planning document; some sections describe previous scope and should be read with that distinction |
 
-The judge script and final evaluation set are pending. The review tables `medical_policy_review_25.csv` and `data/financial_policy_review_first25_only.csv` are published with their prompts; the medical table also includes older model answers. Annotation is still in progress, so these labels are not final. Other annotation files and raw pipeline outputs stay out of this repository.
+The judge script and final evaluation set are pending. The review tables `medical_policy_review_25.csv` and `data/financial_policy_review_first25_only.csv` are published with their prompts; the medical table also includes older model answers. Annotation is still in progress, so these labels are not final. `review/joint_review_2026-11-03.md` publishes nine selected development cases with their requests and model answers, some of which are harmful, for human review. Other annotation files and raw pipeline outputs stay out of this repository.
 
 ## Using the existing pilot tools
 
