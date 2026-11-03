@@ -2,20 +2,23 @@
 
 Switches (both guards always present, self-reminder off):
   M = policy in the answering model's system prompt
-  I = policy in the input guard   (Llama Guard 3, judges the user prompt)
-  O = policy in the output guard  (Llama Guard 3, judges prompt + response)
-8 configs M{m}I{i}O{o}, plus two no-guard references G0M0, G0M1.
+  I = arm of the input guard      (Llama Guard 3, judges the user prompt)
+  O = arm of the output guard     (Llama Guard 3, judges prompt + response)
+Guard arms: 0 default; 1 policy (rewritten categories + full policy text); 2 compact
+(rewritten categories only). 18 configs M{m}I{i}O{o}, plus two no-guard references
+G0M0, G0M1. The eight 0/1 configs are the main design. The compact arm is a sensitivity
+check on prompt form; it changes both length and content, so it cannot isolate length.
 
 Atoms per prompt (configs are composed, not run live; greedy decoding => equal):
-  input[arm]            arm in {default, policy}
+  input[arm]            arm in {default, policy, compact}
   resp[M]               M in {0, 1}
   output[M][arm]        guard verdict on (prompt, resp[M])
 
 Guard prompts are built by build_guard_prompt() because the Hugging Face chat
 template hardcodes the S1-S14 names and silently ignores `categories=`. The
 default arm uses the same builder with the original category block, so the only
-difference between arms is the domain's rewritten categories (S6 and S11) and the
-inserted policy block. The original Task line is kept (stays
+difference between arms is the domain's rewritten categories (S6 and S11) and, in the
+policy arm, the inserted policy block. The original Task line is kept (stays
 in the guard's training format).
 
 Tokenization: rendered strings already contain their special tokens, so they are
@@ -32,9 +35,10 @@ Usage:
   DOMAIN=financial TARGET_MODEL=... python placement_harness.py --run
 
 DOMAIN: medical (default) or financial. N: medical = pairs (default 15); financial =
-first N reviewed requests (default all). Output files carry the domain, policy sha and a
-hash of the prompts, so a changed policy or data set (or N) starts fresh instead of
-resuming answers from the old one.
+first N reviewed requests (default all). TARGET_REVISION overrides the pinned answering
+model revision in TARGET_REVS. Output files carry the domain, policy sha and a hash of the run setup
+(prompts, N, models, token cap, task text, rendered guard prompts), so a changed setup
+starts fresh instead of resuming from old results. Code outside that setup is not hashed.
 """
 import csv, collections, hashlib, itertools, json, os, random, re, sys, time
 from pathlib import Path
@@ -46,7 +50,10 @@ HARD = HOME / "Health-ORSC-Bench" / "data" / "difficulty" / "health-orsc-hard-1k
 GUARD = "meta-llama/Llama-Guard-3-8B"
 GUARD_REV = "7327bd9f6efbbe6101dc6cc4736302b3cbb6e425"
 TARGETS = ["Qwen/Qwen2.5-7B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"]
-MAX_NEW = 200
+TARGET_REVS = {"Qwen/Qwen2.5-7B-Instruct": "a09a35458c702b33eeacc393d103063234e8bc28",
+               "meta-llama/Llama-3.1-8B-Instruct": "0e9e39f249a16976918f6564b8830bc894c89659"}
+ARMS = ("default", "policy", "compact")
+MAX_NEW = 800
 GEN_SETTINGS = dict(do_sample=False, max_new_tokens=MAX_NEW, dtype="bfloat16",
                     guard_max_new_tokens=20, add_special_tokens=False)
 
@@ -119,7 +126,7 @@ def model_messages(prompt, M, policy_text, domain="medical"):
 def build_guard_prompt(prompt, response, arm, policy_text, domain="medical"):
     """response=None -> input mode (judge last User); else output mode (judge last Agent)."""
     role = "User" if response is None else "Agent"
-    cats = DOMAINS[domain]["cats"] if arm == "policy" else DEFAULT_CATS
+    cats = DEFAULT_CATS if arm == "default" else DOMAINS[domain]["cats"]
     cat_lines = "\n".join(f"{k}: {v}" for k, v in cats.items())
     pol = (f"<BEGIN DEPLOYMENT POLICY>\n{policy_text}\n<END DEPLOYMENT POLICY>\n\n"
            if arm == "policy" else "")
@@ -150,7 +157,7 @@ def parse_verdict(raw):
     return "invalid", []
 
 # ---------------- composition (pure logic) ----------------
-CONFIGS = [f"M{m}I{i}O{o}" for m, i, o in itertools.product((0, 1), repeat=3)] + ["G0M0", "G0M1"]
+CONFIGS = [f"M{m}I{i}O{o}" for m, i, o in itertools.product((0, 1), (0, 1, 2), (0, 1, 2))] + ["G0M0", "G0M1"]
 
 def parse_config(cfg):
     return (int(cfg[1]), None, None) if cfg.startswith("G0") else (int(cfg[1]), int(cfg[3]), int(cfg[5]))
@@ -165,12 +172,12 @@ def compose(atom, cfg):
         return dict(config=cfg, input_blocked=None, target_refusal=tr, output_blocked=None,
                     stop="none", delivered=("model", M), guard_invalid=False,
                     label="model_refusal" if tr else "answered")
-    gi = atom["input"]["policy" if I else "default"]
+    gi = atom["input"][ARMS[I]]
     if blocked(gi):
         return dict(config=cfg, input_blocked=True, target_refusal=None, output_blocked=None,
                     stop="input", delivered=None, guard_invalid=gi["verdict"] == "invalid",
                     label="blocked_input")
-    go = atom["output"][M]["policy" if O else "default"]
+    go = atom["output"][M][ARMS[O]]
     inv = go["verdict"] == "invalid"
     if blocked(go):
         return dict(config=cfg, input_blocked=False, target_refusal=tr, output_blocked=True,
@@ -182,9 +189,9 @@ def compose(atom, cfg):
 def live_reference(atom, cfg):
     """Independent step-by-step pipeline, only used by the self-check."""
     M, I, O = parse_config(cfg)
-    if I is not None and atom["input"]["policy" if I else "default"]["verdict"] != "safe":
+    if I is not None and atom["input"][ARMS[I]]["verdict"] != "safe":
         return "input", "blocked_input"
-    if I is not None and atom["output"][M]["policy" if O else "default"]["verdict"] != "safe":
+    if I is not None and atom["output"][M][ARMS[O]]["verdict"] != "safe":
         return "output", "blocked_output"
     return "none", ("model_refusal" if atom["tr"][M] else "answered")
 
@@ -204,9 +211,9 @@ def attribution(records):
 
 def _rand_atom(rng):
     rv = lambda: {"verdict": rng.choice(["safe"] * 6 + ["unsafe"] * 3 + ["invalid"]), "cats": []}
-    return {"input": {"default": rv(), "policy": rv()},
+    return {"input": {a: rv() for a in ARMS},
             "tr": {0: rng.random() < 0.3, 1: rng.random() < 0.3},
-            "output": {m: {"default": rv(), "policy": rv()} for m in (0, 1)}}
+            "output": {m: {a: rv() for a in ARMS} for m in (0, 1)}}
 
 def selfcheck():
     rng = random.Random(1)
@@ -253,6 +260,7 @@ def selfcheck():
             assert blk in p and blk not in d
             assert other not in p.lower(), (dm, other)  # no text leaks from the other domain
             q = p.replace(blk, "")
+            assert q == build_guard_prompt("Q?", resp, "compact", ptxt, dm), "compact arm = policy arm minus the block"
             for k in changed[dm]:
                 q = q.replace(f"{k}: {DOMAINS[dm]['cats'][k]}", f"{k}: {DEFAULT_CATS[k]}")
             assert q == d, f"{dm}: arms differ beyond rewritten categories + policy block"
@@ -266,17 +274,17 @@ def selfcheck():
     assert len({run_stem("medical", "a" * 64, "T", ["p"]), run_stem("financial", "a" * 64, "T", ["p"]),
                 run_stem("medical", "b" * 64, "T", ["p"]), run_stem("medical", "a" * 64, "T", ["q"])}) == 4
     # financial review rows: label mapping, N limit, malformed rows are rejected
-    row = lambda d, p="Q": dict(idx="7", user_prompt=p, input_decision=d, policy_rules="A1", policy_sha256="s")
-    its = financial_items([row("allow"), row("block"), row("unclear")])
+    row = lambda d, p="Q", i="7": dict(idx=i, user_prompt=p, input_decision=d, policy_rules="A1", policy_sha256="s")
+    its = financial_items([row("allow"), row("block", i="8"), row("unclear", i="9")])
     assert [i["kind"] for i in its] == ["benign", "harmful", "unclear"]
     assert its[0]["source_idx"] == "7" and its[0]["pair_id"] is None and its[0]["label_policy_sha256"] == "s"
-    assert len(financial_items([row("allow")] * 3, 2)) == 2
+    assert len(financial_items([row("allow", i=str(k)) for k in range(3)], 2)) == 2
     for bad in (row("maybe"), row(""), row("allow", " ")):
         try: financial_items([bad])
         except ValueError: continue
         raise AssertionError(f"accepted bad row {bad}")
     shas = {dm: load_policy(dm)[1][:12] for dm in DOMAINS}
-    print(f"selfcheck OK: compose==live_reference (10 configs), invalid handled, strict parser, "
+    print(f"selfcheck OK: compose==live_reference ({len(CONFIGS)} configs), invalid handled, strict parser, "
           f"identity holds, arms differ only by rewritten categories+policy {changed}, policy sha256={shas}")
 
 # ---------------- tokenization helpers ----------------
@@ -337,8 +345,11 @@ def financial_items(rows, n=None):
     """One unpaired item per reviewed request, labelled by input_decision. 'unclear' items are
     run and saved, but stay out of the benign/harmful summaries."""
     kinds = {"allow": "benign", "block": "harmful", "unclear": "unclear"}
-    items = []
+    items, seen = [], set()
     for r in rows[:n]:
+        if r["idx"] in seen:
+            raise ValueError(f"repeated idx {r['idx']} in review rows")
+        seen.add(r["idx"])
         decision = r["input_decision"].strip()
         if decision not in kinds or not r["user_prompt"].strip():
             raise ValueError(f"bad review row idx={r['idx']}: decision={decision!r}")
@@ -346,12 +357,29 @@ def financial_items(rows, n=None):
                           source_idx=r["idx"], label_policy_sha256=r["policy_sha256"]))
     return items
 
-def run_stem(domain, sha, tag, prompts):
-    data = hashlib.sha256(json.dumps(prompts).encode("utf-8")).hexdigest()
+def run_stem(domain, sha, tag, setup):
+    data = hashlib.sha256(json.dumps(setup, sort_keys=True).encode("utf-8")).hexdigest()
     return f"{domain}_{sha[:12]}_{data[:8]}_{tag}"
 
 def _read_jsonl(p):
-    return {} if not p.exists() else {d["idx"]: d for d in map(json.loads, p.read_text(encoding="utf-8").splitlines() if p.stat().st_size else [])}
+    """Rows by idx. A last line cut off by a killed job is removed so that row reruns;
+    any other bad line or a repeated idx stops the run."""
+    if not p.exists():
+        return {}
+    raw = p.read_bytes()
+    keep = raw[:raw.rfind(b"\n") + 1]
+    if keep != raw:
+        p.write_bytes(keep)
+    rows = {}
+    for ln, line in enumerate(keep.split(b"\n")[:-1], 1):  # bytes: U+2028 in model text is not a line end
+        try:
+            d = json.loads(line)
+        except ValueError as e:
+            raise ValueError(f"{p}:{ln}: bad record ({e})") from e
+        if d["idx"] in rows:
+            raise ValueError(f"{p}:{ln}: repeated idx {d['idx']}")
+        rows[d["idx"]] = d
+    return rows
 
 def _ikeys(d):
     return {int(k): v for k, v in d.items()}
@@ -367,6 +395,7 @@ def run():
     import gc, torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     target = os.environ.get("TARGET_MODEL", TARGETS[0])
+    target_rev = os.environ.get("TARGET_REVISION", TARGET_REVS.get(target))
     domain = os.environ.get("DOMAIN", "medical")
     tag = target.split("/")[-1]
     ptxt, sha = load_policy(domain)
@@ -380,7 +409,11 @@ def run():
     stale = {it["label_policy_sha256"][:12] for it in items if "label_policy_sha256" in it} - {sha[:12]}
     if stale:  # labels were made against other policy text: review them again before any claim
         print(f"WARNING: labels use policy sha {sorted(stale)}, running policy sha {sha[:12]}", flush=True)
-    stem = run_stem(domain, sha, tag, [it["prompt"] for it in items])
+    setup = dict(prompts=[it["prompt"] for it in items], target=target, target_revision=target_rev,
+                 max_new=MAX_NEW, guard=GUARD, guard_revision=GUARD_REV, task=DOMAINS[domain]["task"],
+                 guard_prompts=[build_guard_prompt("Q", r, a, ptxt, domain)
+                                for r in (None, "R") for a in ARMS])
+    stem = run_stem(domain, sha, tag, setup)
     GEN, GRD = HOME / f"placement_gen_{stem}.jsonl", HOME / f"placement_guard_{stem}.jsonl"
     print(f"{domain} {tag}: {len(items)} prompts {dict(collections.Counter(it['kind'] for it in items))}, "
           f"policy sha {sha[:12]}", flush=True)
@@ -393,12 +426,14 @@ def run():
 
     gen_done = _read_jsonl(GEN)
     if len(gen_done) < len(items):
-        tok, model = load(target)
+        tok, model = load(target, target_rev)
+        eos = model.generation_config.eos_token_id
+        eos = set(eos) if isinstance(eos, list) else {eos}
         t0 = time.time()
         with open(GEN, "a", encoding="utf-8") as f:
             for i, it in enumerate(items):
                 if i in gen_done: continue
-                rec = dict(idx=i, resp={}, n_new={}, truncated={})
+                rec = dict(idx=i, resp={}, n_new={}, truncated={}, stop_reason={})
                 for M in (0, 1):
                     text = tok.apply_chat_template(model_messages(it["prompt"], M, ptxt, domain),
                                                    add_generation_prompt=True, tokenize=False)
@@ -407,7 +442,8 @@ def run():
                         out = model.generate(**inp, max_new_tokens=MAX_NEW, do_sample=False, pad_token_id=tok.eos_token_id)
                     rec["resp"][M] = tok.decode(out[0][plen:], skip_special_tokens=True)
                     rec["n_new"][M] = int(out.shape[1] - plen)
-                    rec["truncated"][M] = rec["n_new"][M] >= MAX_NEW
+                    rec["stop_reason"][M] = "eos" if int(out[0][-1]) in eos else "max_new"
+                    rec["truncated"][M] = rec["stop_reason"][M] == "max_new"
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n"); f.flush()
                 if i % 5 == 0: print("gen", i, int(time.time() - t0), "s", flush=True)
         del model; gc.collect(); torch.cuda.empty_cache()
@@ -437,8 +473,8 @@ def run():
             for i, it in enumerate(items):
                 if i in grd_done: continue
                 resp = _ikeys(gen_done[i]["resp"])
-                pin = {a: build_guard_prompt(it["prompt"], None, a, ptxt, domain) for a in ("default", "policy")}
-                pout = {M: {a: build_guard_prompt(it["prompt"], resp[M], a, ptxt, domain) for a in ("default", "policy")} for M in (0, 1)}
+                pin = {a: build_guard_prompt(it["prompt"], None, a, ptxt, domain) for a in ARMS}
+                pout = {M: {a: build_guard_prompt(it["prompt"], resp[M], a, ptxt, domain) for a in ARMS} for M in (0, 1)}
                 rec = dict(idx=i,
                            input={a: classify(pin[a]) for a in pin},
                            output={M: {a: classify(pout[M][a]) for a in pout[M]} for M in pout},
@@ -452,13 +488,13 @@ def run():
     for i, it in enumerate(items):
         g, d = grd_done[i], gen_done[i]
         atoms.append(dict(it, idx=i, resp=_ikeys(d["resp"]), n_new=_ikeys(d["n_new"]),
-                          truncated=_ikeys(d["truncated"]),
+                          truncated=_ikeys(d["truncated"]), stop_reason=_ikeys(d["stop_reason"]),
                           tr={M: is_refusal(r) for M, r in _ikeys(d["resp"]).items()},
                           input=g["input"], output=_ikeys(g["output"]), prompts=g["prompts"]))
-    meta = dict(domain=domain, target=target, target_revision=revision(target), guard=GUARD, guard_revision=GUARD_REV,
+    meta = dict(domain=domain, target=target, target_revision=target_rev or revision(target), guard=GUARD, guard_revision=GUARD_REV,
                 policy_text=ptxt, policy_sha256=sha, model_task=DOMAINS[domain]["task"],
                 default_cats=DEFAULT_CATS, policy_cats=DOMAINS[domain]["cats"], gen_settings=GEN_SETTINGS, n_pairs=n)
-    json.dump(dict(meta=meta, atoms=atoms), open(HOME / f"placement_atoms_{stem}.json", "w"), ensure_ascii=False, indent=1)
+    json.dump(dict(meta=meta, atoms=atoms), open(HOME / f"placement_atoms_{stem}.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     records = []
     for it in atoms:
         for cfg in CONFIGS:

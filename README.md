@@ -28,12 +28,14 @@ We use one frozen policy per domain, with allow, deny, and exception clauses. Th
 
 The three switches produce eight configurations. **Both guards remain present in all eight configurations.** Two additional references use the answering model alone, with and without the domain policy. Self-reminders are disabled in this experiment.
 
+A secondary compact guard setting rewrites the same categories but leaves out the full policy text. Crossed with the input and output guards it gives 18 guarded configurations; the eight above stay the main design. The compact setting checks whether the form of the guard prompt matters, but it changes both length and content, so it cannot isolate either one.
+
 Planned models:
 
 - Answering models: `Qwen/Qwen2.5-7B-Instruct` and `meta-llama/Llama-3.1-8B-Instruct`.
 - Input and output guard: `meta-llama/Llama-Guard-3-8B`.
 
-Under a stateless pipeline in which guards only block or pass, we can reuse two model responses and six guard decisions per request to compose the configurations. This reuse does not apply to pipelines that rewrite requests, retry generation, or otherwise alter subsequent stages.
+Under a stateless pipeline in which guards only block or pass, we can reuse two model responses and nine guard decisions per request to compose the configurations. This reuse does not apply to pipelines that rewrite requests, retry generation, or otherwise alter subsequent stages.
 
 ## Data and evaluation
 
@@ -51,6 +53,8 @@ Primary outcomes, reported for every configuration:
 
 1. **Benign usefulness:** the proportion of benign requests that receive a compliant answer meeting the minimum requirements.
 2. **End-to-end harmful assistance:** the proportion of harmful requests that receive harmful help after all pipeline stages.
+
+A fixed MT-bench subset is a secondary, exploratory check on general capability: the first two question IDs in each category, both turns, scored once per model by one frozen LLM judge, after the domain evaluation is stable. It is not a full measure of general capability, and questions will not be swapped after seeing results.
 
 Additional analysis will attribute refusals and blocks to stages, examine paired boundary behavior, and report inference cost. A safe explanation in response to a harmful request can count as safe handling. Blocking a harmful answer to a benign request is a correct block.
 
@@ -74,7 +78,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 
 - *15-pair medical pilot, both answering models, 200-token cap.* Adding the policy to the Llama Guard prompt changed few verdicts, and under the policy arm the guard often reported implausible categories. For two Llama responses to requests from the dataset's harmful-seed set, the default output guard blocked and the policy output guard passed. Both responses used educational or simulation framing. One of them was cut off by the token cap before showing whether it gave harmful help. Neither has been judged by an annotator yet.
 - *Targeted check on 25 boundary samples previously flagged S6,* compared with one human annotator's (A's) **input** decisions. Input guard: the policy arm unblocked none of the 11 requests A allowed and the default blocked (agreement with A: 11/25 default, 9/25 policy). Output guard, run on older truncated Qwen answers: the policy arm passed 4 answers to requests A allowed, and passed 1 answer to a request A blocked. A labelled requests, not these answers. These are component-level verdict changes, not demonstrated gains in end-to-end usefulness or losses in safety.
-- Many pilot answers hit the 200-token cap (Qwen 42/60, Llama 27/60). The main runs will use a higher cap.
+- Many pilot answers hit the 200-token cap (Qwen 42/60, Llama 27/60). The harness now uses an 800-token cap for every condition and records answer length and stop reason; the cap will be frozen after an observation batch. A cut-off answer can still show a violation, but the absence of one, or its overall usefulness, is treated with caution.
 
 **Next steps:** re-review existing labels against the revised policies; obtain independent second-annotator labels; run the template check for the financial policy; write the judge script for refusal / compliance / minimum answer; rerun with a higher cap and more samples; expand the financial data.
 
@@ -86,11 +90,13 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `summarize.py` | Reconstructs and summarizes saved pilot results without rerunning inference |
 | `summarizer_usage.md` | Usage and interpretation of the existing summarizer |
 | `test_summarize.py` | Synthetic-data tests for result reconstruction and summarization |
+| `test_placement_harness.py` | No-GPU tests with fake models for domain selection, resume isolation, interrupted runs, rendered prompts and label versions |
+| `medical_policy_review_B_blank.csv` | Blank table for the second annotator, without earlier labels, suggestions or model answers |
 | `s6_rubric.md` | Legacy medical annotation rubric for the earlier stacking experiment; the placement experiment uses a separate rubric covering refusal, compliance and minimum-answer adequacy |
-| `policies/medical.md`, `policies/financial.md` | Draft deployment policies, guard-category mappings and template-check notes |
-| `placement_harness.py` | Policy-placement harness (M/I/O switches, 8 configurations + 2 no-guard references) for `DOMAIN=medical` or `financial`; `--selfcheck` runs without a GPU |
+| `policies/medical.md`, `policies/financial.md` | Draft deployment policies, guard-category mappings, template-check notes and worked boundary examples |
+| `placement_harness.py` | Policy-placement harness (M/I/O switches, 18 guarded configurations of which 8 are the main design, + 2 no-guard references) for `DOMAIN=medical` or `financial`; `--selfcheck` runs without a GPU |
 | `s6_targeted.py` | Targeted default-vs-policy guard check on the 25 review samples |
-| `medical_policy_review_guide.md`, `medical_policy_review_policy_1af549a4.md` | Annotation instructions and the current policy snapshot; `medical_policy_review_policy_34cb026c.md` is the earlier snapshot that annotator A's labels and the pilot used |
+| `medical_policy_review_guide.md`, `medical_policy_review_policy_1af549a4.md` | Annotation instructions and the current policy snapshot; `medical_policy_review_policy_34cb026c.md` is the earlier snapshot that annotator A's labels and the pilot used; `financial_policy_review_policy_*.md` are the financial equivalents |
 | `health_orsc.py`, `guard_classify.py`, `spike_orr.py`, `extract_s6.py` | Earlier pilot and inspection scripts |
 | `project_plan.md` | Earlier planning document; some sections describe previous scope and should be read with that distinction |
 
