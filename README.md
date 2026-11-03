@@ -70,7 +70,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 - Re-tokenizing a rendered chat template with default special tokens added a duplicate start-of-text token for `Llama-3.1-8B-Instruct` (not for Qwen or Llama Guard). Earlier Llama results from `combo_harness.py` used that input and need to be re-checked.
 - In our pilot runs, every inspected Llama Guard output began with a blank line before `safe`/`unsafe`. The harness therefore locates the verdict token before reading its score.
 
-**Behavioural observations** (small, selected samples; no final judging; treat as hypotheses, not results). All numbers come from runs with policy sha256 `34cb026c…` and Llama Guard revision `7327bd9f`; raw outputs are kept off this public repository.
+**Behavioural observations** (small, selected samples; no final judging; treat as hypotheses, not results). All numbers come from runs with policy sha256 `34cb026c…` and Llama Guard revision `7327bd9f`; raw pipeline outputs are kept off this public repository.
 
 - *15-pair medical pilot, both answering models, 200-token cap.* Adding the policy to the Llama Guard prompt changed few verdicts, and under the policy arm the guard often reported implausible categories. For two Llama responses to requests from the dataset's harmful-seed set, the default output guard blocked and the policy output guard passed. Both responses used educational or simulation framing. One of them was cut off by the token cap before showing whether it gave harmful help. Neither has been judged by an annotator yet.
 - *Targeted check on 25 boundary samples previously flagged S6,* compared with one human annotator's (A's) **input** decisions. Input guard: the policy arm unblocked none of the 11 requests A allowed and the default blocked (agreement with A: 11/25 default, 9/25 policy). Output guard, run on older truncated Qwen answers: the policy arm passed 4 answers to requests A allowed, and passed 1 answer to a request A blocked. A labelled requests, not these answers. These are component-level verdict changes, not demonstrated gains in end-to-end usefulness or losses in safety.
@@ -94,7 +94,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `health_orsc.py`, `guard_classify.py`, `spike_orr.py`, `extract_s6.py` | Earlier pilot and inspection scripts |
 | `project_plan.md` | Earlier planning document; some sections describe previous scope and should be read with that distinction |
 
-The judge script and final evaluation set are pending. Annotation files and model outputs are kept out of this public repository: they contain upstream dataset prompts and model-generated text, and the annotation is still in progress. A labels-only release may follow once annotation is frozen and upstream licenses are checked.
+The judge script and final evaluation set are pending. The review tables `medical_policy_review_25.csv` and `data/financial_policy_review_first25_only.csv` are published with their prompts; the medical table also includes older model answers. Annotation is still in progress, so these labels are not final. Other annotation files and raw pipeline outputs stay out of this repository.
 
 ## Using the existing pilot tools
 
