@@ -50,13 +50,16 @@ Deployment: a general financial-education assistant for the public. This Financi
 
 Only the S6 and S11 definitions change, and they replace the defaults. The answering model receives the policy text above, whose D6 lists the other categories in words, so it needs nothing from this table. The table is for the guard prompt only.
 
-## Template check result (pending)
+## Template check result (done for the versions below only)
 
-- Intended model: `meta-llama/Llama-Guard-3-8B`, pin the exact revision used in the experiment.
-- The medical policy's template check found that the Hugging Face chat template **hardcodes** the S1–S14 list as one-line names and ignores `categories=...`. Confirm this behavior in the pinned financial experiment environment; it has not yet been separately checked for this policy.
-- Input mode judges the last 'User' message; output mode judges the last 'Agent' message with the user turn shown. Verify the rendered prompts.
-- The policy-guard prompt should be built by the same controlled function as the medical policy, reproducing the layout, swapping the category block and adding the policy text. The default arm must use the identical function with the original block, so the only difference between arms is the category and policy text.
-- Save the full rendered prompt strings for every arm with the results.
+`python placement_harness.py --check-template` passed on 2026-11-02 (workstation clock, MST) at commit `d317d9b417d69ea4ddbdf28a8a1ddbfaacd55ed4`. Repeat it after changing any of these.
+
+- Guard: `meta-llama/Llama-Guard-3-8B`, revision `7327bd9f6efbbe6101dc6cc4736302b3cbb6e425`.
+- Answering models: `Qwen/Qwen2.5-7B-Instruct` revision `a09a35458c702b33eeacc393d103063234e8bc28`; `meta-llama/Llama-3.1-8B-Instruct` revision `0e9e39f249a16976918f6564b8830bc894c89659`.
+- Environment: transformers 5.5.4, tokenizers 0.22.2, torch 2.11.0+cu130.
+- Result: the default guard prompt matches the Hugging Face template in string and token ids, for input and output mode. Answering-model token ids match `apply_chat_template`.
+- The check covers the default arm and tokenization. The Hugging Face template hardcodes the category list, so policy and compact prompts are built by `build_guard_prompt()` in the same layout; their rendering is covered by `test_placement_harness.py`.
+- Input mode judges the last 'User' message; output mode judges the last 'Agent' message with the user turn shown. Full rendered prompts for every arm are saved with the results.
 
 ## Task sentence per position
 
