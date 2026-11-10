@@ -28,14 +28,22 @@ We use one frozen policy per domain, with allow, deny, and exception clauses. Th
 
 The three switches produce eight configurations. **Both guards remain present in all eight configurations.** Two additional references use the answering model alone, with and without the domain policy. Self-reminders are disabled in this experiment.
 
-A secondary compact guard setting rewrites the same categories but leaves out the full policy text. Crossed with the input and output guards it gives 18 guarded configurations; the eight above stay the main design. The compact setting checks whether the form of the guard prompt matters, but it changes both length and content, so it cannot isolate either one.
-
 Planned models:
 
 - Answering models: `Qwen/Qwen2.5-7B-Instruct` and `meta-llama/Llama-3.1-8B-Instruct`.
-- Input and output guard: `meta-llama/Llama-Guard-3-8B`.
+- Input and output guard: `openai/gpt-oss-safeguard-20b` (reasoning effort medium). Its default arm is a generic policy listing the Llama Guard 3 categories, since the model has no built-in policy; its policy arm is the domain policy text.
 
-Under a stateless pipeline in which guards only block or pass, we can reuse two model responses and nine guard decisions per request to compose the configurations. This reuse does not apply to pipelines that rewrite requests, retry generation, or otherwise alter subsequent stages.
+**Guard choice (changed after proposal feedback, 2026-11-09).** The proposal used Llama Guard 3 8B with a third, compact guard arm. Following the TA's suggestion, `guard_screen.py` compared default and policy input verdicts of three guards on the 49 labelled development requests:
+
+| Guard | Agreement with human labels, medical (default → policy) | Financial (default → policy) | Verdicts changed by the policy (toward the label) |
+| --- | --- | --- | --- |
+| Llama Guard 3 8B | 11 → 13 / 25 | 14 → 14 / 24 | 4 (3) |
+| Qwen3Guard-Gen-8B (Controversial = block) | 12 → 13 / 25 | 21 → 20 / 24 | 4 (2) |
+| gpt-oss-safeguard-20b | 13 → 19 / 25 | 11 → 21 / 24 | 18 (17) |
+
+Only gpt-oss-safeguard followed the policy, so the harness now uses it and drops the compact arm. These are development labels from one annotator, so the table supports the choice of guard, not any experimental claim.
+
+Under a stateless pipeline in which guards only block or pass, we can reuse two model responses and six guard decisions per request to compose the configurations. This reuse does not apply to pipelines that rewrite requests, retry generation, or otherwise alter subsequent stages.
 
 ## Data and evaluation
 
@@ -47,7 +55,7 @@ Planned data sources include:
 - [FinSafetyBench](https://github.com/sustech-nlp/FinSafetyBench): financial harmful requests in English and Chinese.
 - [FinSafeGuard](https://huggingface.co/datasets/domyn/FinSafeGuard): candidate financial conversations for supplementary component evaluation.
 
-Source labels will be reviewed against our deployment policy. Development and test examples will be separated by source/template family, keeping related variants together. Policies and test annotations will be frozen before the final comparison. Upstream datasets are not bundled here; their licenses and attribution requirements apply separately.
+The 50 requests reviewed so far (25 per domain) are development data. The test set is 40 new requests per domain, reduced from the proposal's 100–200 because of annotation time (decided 2026-11-09); intervals will be correspondingly wide. Source labels will be reviewed against our deployment policy. Development and test examples will be separated by source/template family, keeping related variants together. Policies and test annotations will be frozen before the final comparison. Upstream datasets are not bundled here; their licenses and attribution requirements apply separately.
 
 Primary outcomes, reported for every configuration:
 
@@ -96,7 +104,8 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `s6_rubric.md` | Legacy medical annotation rubric for the earlier stacking experiment; the placement experiment uses a separate rubric covering refusal, compliance and minimum-answer adequacy |
 | `policies/medical.md`, `policies/financial.md` | Draft deployment policies, guard-category mappings, template-check notes and worked boundary examples |
 | `placement_harness.py` | Policy-placement harness (M/I/O switches, 18 guarded configurations of which 8 are the main design, + 2 no-guard references) for `DOMAIN=medical` or `financial`; `--selfcheck` runs without a GPU |
-| `s6_targeted.py` | Targeted default-vs-policy guard check on the 25 review samples |
+| `s6_targeted.py` | Targeted default-vs-policy guard check on the 25 review samples (Llama Guard 3; imports the Llama Guard code from `guard_screen.py`) |
+| `guard_screen.py` | Guard screening: default vs policy input verdicts of three guards against the human labels; `--selfcheck` runs without a GPU |
 | `medical_policy_review_guide.md`, `medical_policy_review_policy_fe155626.md` | Annotation instructions and the current policy snapshot; `medical_policy_review_policy_1af549a4.md` is the previous reviewed version (the current one adds the D3 unauthorized-access clause and the A2 dosing-limit sentence); `medical_policy_review_policy_34cb026c.md` is the earlier snapshot that annotator A's labels and the pilot used; `financial_policy_review_policy_*.md` are the financial equivalents |
 | `health_orsc.py`, `guard_classify.py`, `spike_orr.py`, `extract_s6.py` | Earlier pilot and inspection scripts |
 | `project_plan.md` | Earlier planning document; some sections describe previous scope and should be read with that distinction |

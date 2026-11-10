@@ -3,13 +3,14 @@
 For each sample, run Llama Guard 3 with the default arm and the policy arm:
   input mode  (prompt only)               -> compared with annotator A's input decision
   output mode (prompt + stored response)  -> secondary; responses are old Qwen outputs, truncated
-Reuses the prompt builder and parsers from placement_harness.py.
+Reuses the Llama Guard prompt builder and parsers, now kept in guard_screen.py.
 Usage (cluster): python s6_targeted.py
 """
 import csv, json, sys
 from pathlib import Path
-from placement_harness import (GUARD, GUARD_REV, build_guard_prompt, load_policy,
-                               parse_verdict, verdict_step, enc)
+from placement_harness import load_policy, enc
+from guard_screen import (LG_GUARD as GUARD, LG_REV as GUARD_REV, build_guard_prompt,
+                          parse_verdict, verdict_step)
 
 HERE = Path(__file__).resolve().parent
 rows = list(csv.DictReader(open(HERE / "medical_policy_review_25.csv", encoding="utf-8-sig", newline="")))
