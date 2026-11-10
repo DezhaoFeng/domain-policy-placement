@@ -97,7 +97,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `policies/medical.md`, `policies/financial.md` | Draft deployment policies, guard-category mappings, template-check notes and worked boundary examples |
 | `placement_harness.py` | Policy-placement harness (M/I/O switches, 18 guarded configurations of which 8 are the main design, + 2 no-guard references) for `DOMAIN=medical` or `financial`; `--selfcheck` runs without a GPU |
 | `s6_targeted.py` | Targeted default-vs-policy guard check on the 25 review samples |
-| `medical_policy_review_guide.md`, `medical_policy_review_policy_bf122931.md` | Annotation instructions and the current policy snapshot; `medical_policy_review_policy_1af549a4.md` is the previous version (differs only in the D3 unauthorized-access clause); `medical_policy_review_policy_34cb026c.md` is the earlier snapshot that annotator A's labels and the pilot used; `financial_policy_review_policy_*.md` are the financial equivalents |
+| `medical_policy_review_guide.md`, `medical_policy_review_policy_fe155626.md` | Annotation instructions and the current policy snapshot; `medical_policy_review_policy_1af549a4.md` is the previous reviewed version (the current one adds the D3 unauthorized-access clause and the A2 dosing-limit sentence); `medical_policy_review_policy_34cb026c.md` is the earlier snapshot that annotator A's labels and the pilot used; `financial_policy_review_policy_*.md` are the financial equivalents |
 | `health_orsc.py`, `guard_classify.py`, `spike_orr.py`, `extract_s6.py` | Earlier pilot and inspection scripts |
 | `project_plan.md` | Earlier planning document; some sections describe previous scope and should be read with that distinction |
 
