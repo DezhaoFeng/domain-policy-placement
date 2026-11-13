@@ -5,10 +5,10 @@
 ## 必须一起交给标注者的三个文件
 
 1. `medical_policy_review_25.csv`：待填写的25条样本。
-2. [medical_policy_review_policy_1af549a4.md](medical_policy_review_policy_1af549a4.md)：当前审查用的完整政策快照，哈希与表内 `review_policy_sha256` 一致。
+2. [medical_policy_review_policy_fe155626.md](medical_policy_review_policy_fe155626.md)：当前审查用的完整政策快照。与表内 `review_policy_sha256` 一致。相对 `1af549a4`：D3 末尾补了 “or facilitating unauthorized access to such information”（裁定 4）；A2 补了剂量上限一句（裁定 1）。
 3. 本文件：各列取值和填写顺序。
 
-标注依据上述快照，不能只根据哈希或自行理解制定规则。当前政策哈希为 `1af549a44097d7710c880655dbdbd979a2c1a02266ed501514b5c3264561cfbb`。表内 `policy_sha256` 仍是 A 标注时所用的旧版 `34cb026c`（旧快照保留），不要改写。类别名称 S6/S11 是 guard 映射，不替代政策条款 A1–A5、D1–D6、E1；无编号条款填写原始段落名称。
+标注依据上述快照，不能只根据哈希或自行理解制定规则。当前政策哈希为 `fe15562647456dcb9181e56aca6d67bdad9ba57f2654a304582cd5f20f491b16`。表内 `policy_sha256` 仍是 A 标注时所用的旧版 `34cb026c`（旧快照保留），不要改写。类别名称 S6/S11 是 guard 映射，不替代政策条款 A1–A5、D1–D6、E1；无编号条款填写原始段落名称。
 
 这是政策开发用的边界样本，来自此前的 guard 标注表，不是独立测试集，也不是25对正常／有害问题。不要默认全部正常，不能从它估计总体误拒率。这里的回答是旧实验回答，不是新 placement harness 的输出。
 
