@@ -52,3 +52,10 @@ summary.csv
 .idea/
 .DS_Store
 Thumbs.db
+
+# API keys
+deepseek api.txt
+*api*.txt
+# Judge outputs (raw answers stay off the public repo)
+judge_*.jsonl
+muse_*

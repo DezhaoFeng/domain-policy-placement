@@ -46,31 +46,17 @@ class Enc(dict):
         return self
 
 
-class Prob:
-    def __getitem__(self, k):
-        return self
-
-    def float(self):
-        return self
-
-    def item(self):
-        return 0.5
-
-
 class Tok:
     eos_token_id = 0
-    words = {1: "safe", 2: "unsafe", 3: "\n\n", 10: "fake answer"}
+    words = {10: "fake answer", 11: "<|channel|>analysis<|message|>ok<|end|><|channel|>final<|message|>ALLOW"}
 
     def __call__(self, text, return_tensors=None, add_special_tokens=True):
         Fakes.last_text = text
         return Enc(input_ids=Batch([5] * 4))
 
-    def apply_chat_template(self, messages, add_generation_prompt=True, tokenize=False):
+    def apply_chat_template(self, messages, add_generation_prompt=True, tokenize=False, **kw):
         Fakes.messages.append(messages)
         return json.dumps(messages)
-
-    def encode(self, text, add_special_tokens=False):
-        return [1] if text == "safe" else [2]
 
     def decode(self, ids, skip_special_tokens=False):
         return "".join(self.words.get(i, "") for i in ids)
@@ -90,7 +76,7 @@ class Target:
 class Guard(Target):
     def generate(self, input_ids=None, **kw):
         Fakes.tick("guard")
-        return types.SimpleNamespace(sequences=[Row(list(input_ids.row) + [3, 1])], scores=[Prob(), Prob()])
+        return Batch(list(input_ids.row) + [11])
 
 
 class Fakes:
@@ -121,7 +107,7 @@ def fake_modules():
         Fakes.revisions.append((name, kw.get("revision")))
         return Guard() if name == n.GUARD else Target()
     torch = types.SimpleNamespace(
-        bfloat16="bf16", no_grad=contextlib.nullcontext, softmax=lambda x, dim: Prob(),
+        bfloat16="bf16", no_grad=contextlib.nullcontext,
         cuda=types.SimpleNamespace(empty_cache=lambda: None))
     transformers = types.SimpleNamespace(
         AutoTokenizer=types.SimpleNamespace(from_pretrained=lambda name, **kw: Tok()),
@@ -187,12 +173,14 @@ class DomainSelection(RunCase):
         self.assertEqual(got["meta"]["domain"], "financial")
         self.assertEqual(got["meta"]["policy_sha256"], n.load_policy("financial")[1])
         self.assertEqual([a["prompt"] for a in got["atoms"]], ["first?", "second?", "third?"])
-        system = [m[0]["content"] for m in Fakes.messages if m[0]["role"] == "system"]
+        system = [m[0]["content"] for m in Fakes.messages
+                  if m[0]["role"] == "system" and not m[0]["content"].endswith("BLOCK or ALLOW.")]  # skip guard calls
         self.assertEqual(len(system), 3)
         self.assertTrue(all(s.startswith("You are a financial-education assistant") for s in system))
-        for arm_text in got["atoms"][0]["prompts"]["input"]["policy"], got["atoms"][0]["prompts"]["output"]["1"]["policy"]:
-            self.assertIn("S6: " + n.FINANCIAL_CATS["S6"], arm_text)
-            self.assertNotIn("personal health", arm_text)
+        policy = n.load_policy("financial")[0]
+        for msgs in got["atoms"][0]["prompts"]["input"]["policy"], got["atoms"][0]["prompts"]["output"]["1"]["policy"]:
+            self.assertTrue(msgs[0]["content"].startswith(policy))
+            self.assertNotIn("health", msgs[0]["content"].lower())
 
     def test_unknown_domain_fails_before_any_output(self):
         with self.assertRaises(KeyError):
@@ -211,7 +199,7 @@ class ResumeIsolation(RunCase):
     def setUp(self):
         super().setUp()
         self.run_harness()
-        self.assertEqual(Fakes.calls, {"gen": 6, "guard": 27})
+        self.assertEqual(Fakes.calls, {"gen": 6, "guard": 18})
 
     def test_same_setup_reuses_everything(self):
         self.run_harness()
@@ -236,8 +224,12 @@ class ResumeIsolation(RunCase):
     def test_changed_target_revision(self):
         self.assert_starts_fresh(TARGET_REVISION="abc123")
 
-    def test_changed_category_text_is_not_covered_by_policy_sha(self):
-        with mock.patch.dict(n.FINANCIAL_CATS, S6="Edited S6."):
+    def test_changed_generic_policy_is_not_covered_by_policy_sha(self):
+        with mock.patch.object(n, "GENERIC_POLICY", "Edited generic policy."):
+            self.assert_starts_fresh()
+
+    def test_changed_guard_effort(self):
+        with mock.patch.object(n, "GUARD_EFFORT", "high"):
             self.assert_starts_fresh()
 
     def test_changed_guard_revision(self):
@@ -270,10 +262,10 @@ class InterruptRecovery(RunCase):
 
     def test_killed_during_guard(self):
         with self.assertRaises(KeyboardInterrupt):
-            self.run_harness(fail_after={"guard": 12})  # item 0 done, item 1 partly done
+            self.run_harness(fail_after={"guard": 9})  # item 0 done (6 calls), item 1 partly done
         self.assertEqual(self.idxs(self.guard_file()), [0])
         self.run_harness()
-        self.assertEqual(Fakes.calls, {"gen": 0, "guard": 18})
+        self.assertEqual(Fakes.calls, {"gen": 0, "guard": 12})
         self.assertEqual(self.idxs(self.guard_file()), [0, 1, 2])
 
     def test_line_cut_off_by_a_reboot_is_rerun(self):
@@ -310,60 +302,52 @@ class PromptRegression(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             n.selfcheck()
 
-    def test_rendered_prompts_for_both_domains(self):
+    def test_rendered_guard_messages_for_both_domains(self):
         for dm in n.DOMAINS:
             text, _ = n.load_policy(dm)
-            cats = n.DOMAINS[dm]["cats"]
             for response in (None, "RESP"):
-                d = n.build_guard_prompt("Q?", response, "default", text, dm)
-                p = n.build_guard_prompt("Q?", response, "policy", text, dm)
-                for prompt in (d, p):
-                    self.assertIsNone(re.search(r"\{[a-zA-Z_]+\}|<\?claude|TODO", prompt), dm)
-                    self.assertEqual(re.findall(r"^S\d+:", prompt, re.M), [f"S{i}:" for i in range(1, 15)])
-                self.assertIn(f"S6: {cats['S6']}\n", p)
-                self.assertIn(f"S11: {cats['S11']}\n", p)
-                self.assertIn(f"<BEGIN DEPLOYMENT POLICY>\n{text}\n<END DEPLOYMENT POLICY>", p)
-                self.assertIn("S6: Specialized Advice.\n", d)
-                self.assertIn("S11: Self-Harm.\n", d)
-                self.assertNotIn("DEPLOYMENT POLICY", d)
-                c = n.build_guard_prompt("Q?", response, "compact", text, dm)
-                self.assertEqual(c, p.replace(f"<BEGIN DEPLOYMENT POLICY>\n{text}\n<END DEPLOYMENT POLICY>\n\n", ""))
-                self.assertIn(f"S6: {cats['S6']}\n", c)
+                d = n.build_guard_messages("Q?", response, "default", text)
+                p = n.build_guard_messages("Q?", response, "policy", text)
+                for msgs in (d, p):
+                    self.assertEqual([m["role"] for m in msgs], ["system", "user"])
+                    self.assertIsNone(re.search(r"\{[a-zA-Z_]+\}|<\?claude|TODO", msgs[0]["content"]), dm)
+                    self.assertTrue(msgs[0]["content"].endswith("exactly one word: BLOCK or ALLOW."))
+                self.assertTrue(p[0]["content"].startswith(text))
+                self.assertEqual(re.findall(r"^S\d+:", d[0]["content"], re.M), [f"S{i}:" for i in range(1, 15)])
+                self.assertNotIn(text, d[0]["content"])
+                self.assertIn("ASSISTANT RESPONSE" if response else "USER request", p[0]["content"])
 
     def test_default_arm_does_not_depend_on_domain(self):
-        self.assertEqual(n.build_guard_prompt("Q", "R", "default", "x", "medical"),
-                         n.build_guard_prompt("Q", "R", "default", "x", "financial"))
-
-    def test_agreed_category_text(self):
-        self.assertEqual(n.MEDICAL_CATS["S11"], n.FINANCIAL_CATS["S11"])
-        self.assertNotIn("D1-D6", n.FINANCIAL_CATS["S6"])
-        self.assertIn("insider trading", n.FINANCIAL_CATS["S6"])
-        self.assertIn("medical records", n.MEDICAL_CATS["S6"])
+        self.assertEqual(n.build_guard_messages("Q", "R", "default", n.load_policy("medical")[0]),
+                         n.build_guard_messages("Q", "R", "default", n.load_policy("financial")[0]))
 
 
-class CompactArm(RunCase):
-    def test_design_has_eighteen_guarded_configs_and_two_references(self):
+class ArmDesign(RunCase):
+    def test_design_has_eight_guarded_configs_and_two_references(self):
         guarded = [c for c in n.CONFIGS if not c.startswith("G0")]
-        self.assertEqual(len(guarded), 18)
-        self.assertEqual(len(set(n.CONFIGS)), 20)
-        self.assertIn("M1I2O2", guarded)
+        self.assertEqual(len(guarded), 8)
+        self.assertEqual(len(set(n.CONFIGS)), 10)
+        self.assertEqual(n.ARMS, ("default", "policy"))
 
     def test_compose_reads_the_arm_each_switch_names(self):
         safe, unsafe = dict(verdict="safe"), dict(verdict="unsafe")
         atom = dict(tr={0: False, 1: False},
-                    input=dict(default=safe, policy=safe, compact=unsafe),
-                    output={m: dict(default=safe, policy=unsafe, compact=safe) for m in (0, 1)})
-        self.assertEqual(n.compose(atom, "M0I2O0")["stop"], "input")
-        self.assertEqual(n.compose(atom, "M0I0O1")["stop"], "output")
-        self.assertEqual(n.compose(atom, "M0I0O2")["stop"], "none")
+                    input=dict(default=safe, policy=unsafe),
+                    output={m: dict(default=unsafe, policy=safe) for m in (0, 1)})
+        self.assertEqual(n.compose(atom, "M0I1O1")["stop"], "input")
+        self.assertEqual(n.compose(atom, "M0I0O0")["stop"], "output")
+        self.assertEqual(n.compose(atom, "M0I0O1")["stop"], "none")
 
-    def test_run_saves_all_three_arms_and_all_configs(self):
+    def test_run_saves_both_arms_all_configs_and_costs(self):
         self.run_harness()
         atom = self.atoms()["atoms"][0]
         self.assertEqual(set(atom["input"]), set(n.ARMS))
         self.assertEqual(set(atom["output"]["1"]), set(n.ARMS))
         self.assertEqual(set(atom["prompts"]["input"]), set(n.ARMS))
-        self.assertNotIn("DEPLOYMENT POLICY", atom["prompts"]["input"]["compact"])
+        self.assertEqual(atom["input"]["policy"]["verdict"], "safe")
+        for g in (atom["input"]["default"], atom["output"]["0"]["policy"]):
+            self.assertEqual((g["n_new"], type(g["seconds"])), (1, float))
+        self.assertEqual(set(atom["seconds"]), {"0", "1"})
         records = json.loads(self.files("placement_results_*.json")[0].read_text(encoding="utf-8"))
         self.assertEqual({r["config"] for r in records}, set(n.CONFIGS))
 
@@ -372,6 +356,8 @@ class FrozenSetup(RunCase):
     def test_token_cap(self):
         self.assertEqual(n.MAX_NEW, 800)
         self.assertEqual(n.GEN_SETTINGS["max_new_tokens"], 800)
+        self.assertEqual((n.GEN_SETTINGS["guard_max_new_tokens"], n.GEN_SETTINGS["guard_reasoning_effort"]),
+                         (4096, "medium"))
 
     def test_target_revision_defaults_to_the_pin(self):
         for name, rev in n.TARGET_REVS.items():
