@@ -94,6 +94,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 
 | File | Purpose |
 | --- | --- |
+| `SETUP.md`, `requirements.txt` | How to reproduce the GPU environment and run the scripts on SFU CSIL workstations |
 | `combo_harness.py` | Existing pilot harness for input guard / self-reminder / output guard combinations; these switches differ from the planned M/I/O experiment |
 | `summarize.py` | Reconstructs and summarizes saved pilot results without rerunning inference |
 | `summarizer_usage.md` | Usage and interpretation of the existing summarizer |

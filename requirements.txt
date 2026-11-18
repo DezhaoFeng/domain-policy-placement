@@ -1,0 +1,14 @@
+# GPU environment for placement_harness.py / guard_screen.py (tested on RTX 4090, driver 595, Python 3.12.3).
+# judge.py and every --selfcheck need only the Python standard library.
+--index-url https://download.pytorch.org/whl/cu130
+--extra-index-url https://pypi.org/simple
+torch==2.11.0+cu130
+transformers==5.5.4
+accelerate==1.13.0
+safetensors==0.7.0
+tokenizers==0.22.2
+# Pinned on purpose: without `kernels`, gpt-oss-safeguard-20b is dequantized from MXFP4 to bf16
+# and runs out of memory on 24 GB; kernels>=0.13 breaks the transformers 5.5.4 import, and a newer
+# huggingface_hub (2.x) is pulled in if these two are not pinned together.
+kernels==0.12.3
+huggingface_hub==1.10.2
