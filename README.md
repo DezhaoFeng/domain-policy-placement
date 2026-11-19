@@ -4,7 +4,7 @@ A small-scale trustworthy AI research project on policy placement in safety pipe
 
 **Research question:** When the same domain policy is supplied to the answering model, the input guard, or the output guard, which placement gives users more compliant, useful answers while limiting harmful assistance?
 
-**Status:** Pilot stage. The policy-placement harness is implemented and self-checked; a 15-pair pipeline pilot and a 25-sample targeted guard check have been run. The financial data, judge script and full experiment are pending. No final results are claimed.
+**Status:** Development evaluation run (2026-11-18). Policies are frozen (medical `fe155626`, financial v2 `b6e15c90`). All eight configurations plus the two references have been run on the 25 reviewed development requests per domain, for both answering models; only keyword counts exist so far (see *Development run*). Judging is waiting for the minimum acceptable answers; the test set is pending. No final results are claimed.
 
 ## Motivation
 
@@ -18,7 +18,7 @@ User request -> Input guard -> Answering model -> Output guard -> Delivered answ
 
 ## Planned experiment
 
-We use one frozen policy per domain, with allow, deny, and exception clauses. The substantive policy is shared across stages; task instructions and the guard-template rendering are recorded separately.
+We use one frozen policy per domain, with allow, deny, and exception clauses: `policies/medical.md` (sha256 `fe155626…`) and `policies/financial.md` (v2, `b6e15c90…`; chosen over Tracy's v1 `567ad25b…` on 2026-11-18 because its rule IDs align with the medical policy). The substantive policy is shared across stages; task instructions and the guard-template rendering are recorded separately.
 
 | Switch | Default setting (0) | Policy setting (1) |
 | --- | --- | --- |
@@ -41,13 +41,27 @@ Planned models:
 | Qwen3Guard-Gen-8B (Controversial = block) | 12 → 13 / 25 | 21 → 20 / 24 | 4 (2) |
 | gpt-oss-safeguard-20b | 13 → 19 / 25 | 11 → 21 / 24 | 18 (17) |
 
-Only gpt-oss-safeguard followed the policy, so the harness now uses it and drops the compact arm. These are development labels from one annotator, so the table supports the choice of guard, not any experimental claim.
+Only gpt-oss-safeguard followed the policy, so the harness now uses it and drops the compact arm. These are development labels from one annotator (computed before the majority-vote final labels existed), so the table supports the choice of guard, not any experimental claim.
 
 Under a stateless pipeline in which guards only block or pass, we can reuse two model responses and six guard decisions per request to compose the configurations. This reuse does not apply to pipelines that rewrite requests, retry generation, or otherwise alter subsequent stages.
 
+## Development run (2026-11-18, preliminary)
+
+Requests (out of 25 per domain) for which the user received no answer, i.e. blocked by a guard or refused by the model (keyword rule; not yet judged). Lower is better for benign, higher for harmful. Qwen / Llama.
+
+| Configuration | Medical benign (14) | Medical harmful (11) | Financial benign (13) | Financial harmful (11) |
+| --- | --- | --- | --- | --- |
+| G0M0: no guards | 1 / 4 | 2 / 4 | 0 / 2 | 2 / 10 |
+| M0I0O0: all default | 12 / 11 | 10 / 9 | 10 / 10 | 8 / 11 |
+| M0I1O0: policy in input guard only | 11 / 10 | 11 / 11 | 8 / 7 | 9 / 10 |
+| M0I1O1: policy in both guards | 6 / 8 | 11 / 11 | 1 / 3 | 8 / 10 |
+| M1I1O1: policy everywhere | 6 / 10 | 11 / 11 | 1 / 4 | 8 / 11 |
+
+Tentative patterns: the policy in both guards reduces over-blocking of benign requests without fewer harmful requests being stopped; the policy in the input guard alone is mostly undone by the default output guard; the policy in the answering model has little effect for Qwen and makes Llama refuse more benign requests. Whether the harmful requests that got through received harmful help is not yet judged. 0 invalid guard outputs; 1–4 of 50 answers per run hit the 800-token cap. Raw outputs stay off this repository.
+
 ## Data and evaluation
 
-Medical data supports the initial pilot. The main financial evaluation will use benign/harmful request pairs with similar topics and wording but different intent. Each benign request will include a reason it is allowed and a minimum acceptable answer.
+The development run uses the 25 reviewed requests per domain, labelled by `final_input_decision` (changed 2026-11-18: medical previously sampled Health-ORSC pairs, which have no human labels or minimum answers). The main financial evaluation will use benign/harmful request pairs with similar topics and wording but different intent. Each benign request will include a reason it is allowed and a minimum acceptable answer.
 
 Planned data sources include:
 
