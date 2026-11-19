@@ -28,11 +28,11 @@ tokenized with add_special_tokens=False (identical to apply_chat_template(tokeni
 Usage (cluster: ~/gptoss_venv/bin/python, which has the MXFP4 kernels the guard needs):
   python placement_harness.py --selfcheck                 # no GPU, no models
   python placement_harness.py --check-template            # tokenizers only
-  TARGET_MODEL=... N=15 python placement_harness.py --run # resumable
+  TARGET_MODEL=... python placement_harness.py --run      # resumable
   DOMAIN=financial TARGET_MODEL=... python placement_harness.py --run
 
-DOMAIN: medical (default) or financial. N: medical = pairs (default 15); financial =
-first N reviewed requests (default all). TARGET_REVISION overrides the pinned answering
+DOMAIN: medical (default) or financial. Both run the human-reviewed development requests
+(REVIEW), labelled by final_input_decision; N = first N of them (default all). TARGET_REVISION overrides the pinned answering
 model revision in TARGET_REVS. Output files carry the domain, policy sha and a hash of the run setup
 (prompts, N, models, token caps, task text, rendered guard messages), so a changed setup
 starts fresh instead of resuming from old results. Code outside that setup is not hashed.
@@ -41,9 +41,9 @@ import csv, collections, hashlib, itertools, json, os, random, re, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FIN_DATA = HERE / "data" / "financial_policy_review_first25_only.csv"
+REVIEW = {"medical": (HERE / "medical_policy_review_25.csv", "prompt"),  # (file, prompt column)
+          "financial": (HERE / "data" / "financial_policy_review_first25_only.csv", "user_prompt")}
 HOME = Path.home() / "orr_spike"
-HARD = HOME / "Health-ORSC-Bench" / "data" / "difficulty" / "health-orsc-hard-1k.jsonl"
 GUARD = "openai/gpt-oss-safeguard-20b"
 GUARD_REV = "8a11e17b25c973a24099d4016bf2e17dd7ec1574"
 GUARD_EFFORT = "medium"   # as in the screening run
@@ -223,16 +223,19 @@ def selfcheck():
     # resume files never mix domains, policy versions or prompt sets
     assert len({run_stem("medical", "a" * 64, "T", ["p"]), run_stem("financial", "a" * 64, "T", ["p"]),
                 run_stem("medical", "b" * 64, "T", ["p"]), run_stem("medical", "a" * 64, "T", ["q"])}) == 4
-    # financial review rows: label mapping, N limit, malformed rows are rejected
-    row = lambda d, p="Q", i="7": dict(idx=i, user_prompt=p, input_decision=d, policy_rules="A1", policy_sha256="s")
-    its = financial_items([row("allow"), row("block", i="8"), row("unclear", i="9")])
+    # review rows: label mapping, N limit, malformed rows are rejected
+    row = lambda d, p="Q", i="7": dict(idx=i, user_prompt=p, final_input_decision=d, policy_rules="A1", policy_sha256="s")
+    its = reviewed_items([row("allow"), row("block", i="8"), row("unclear", i="9")], "user_prompt")
     assert [i["kind"] for i in its] == ["benign", "harmful", "unclear"]
     assert its[0]["source_idx"] == "7" and its[0]["pair_id"] is None and its[0]["label_policy_sha256"] == "s"
-    assert len(financial_items([row("allow", i=str(k)) for k in range(3)], 2)) == 2
+    assert len(reviewed_items([row("allow", i=str(k)) for k in range(3)], "user_prompt", 2)) == 2
     for bad in (row("maybe"), row(""), row("allow", " ")):
-        try: financial_items([bad])
+        try: reviewed_items([bad], "user_prompt")
         except ValueError: continue
         raise AssertionError(f"accepted bad row {bad}")
+    for dm, (path, col) in REVIEW.items():  # the real review files load with their final labels
+        with open(path, encoding="utf-8-sig", newline="") as f:
+            assert len(reviewed_items(list(csv.DictReader(f)), col)) == 25, dm
     shas = {dm: load_policy(dm)[1][:12] for dm in DOMAINS}
     print(f"selfcheck OK: compose==live_reference ({len(CONFIGS)} configs), invalid handled, strict parser, "
           f"arms differ only by the policy, policy sha256={shas}")
@@ -270,26 +273,8 @@ def check_template():
     print("check-template OK")
 
 # ---------------- data + run ----------------
-def build_items(n):
-    """Medical pilot: n benign boundary prompts + their harmful seed twins (original_question).
-    Labels come from the dataset fields and must be reviewed by hand before any claim."""
-    rows = [json.loads(l) for l in open(HARD, encoding="utf-8")]
-    random.Random(0).shuffle(rows)
-    items, seen = [], set()
-    for r in rows:
-        oq = r.get("original_question")
-        if not oq or oq in seen:  # one benign per harmful seed
-            continue
-        seen.add(oq)
-        pid = len(items) // 2
-        items.append(dict(pair_id=pid, kind="benign", prompt=r["question"], category=r.get("classification", "")))
-        items.append(dict(pair_id=pid, kind="harmful", prompt=oq, category=r.get("classification", "")))
-        if len(items) >= 2 * n:
-            break
-    return items
-
-def financial_items(rows, n=None):
-    """One unpaired item per reviewed request, labelled by input_decision. 'unclear' items are
+def reviewed_items(rows, prompt_col, n=None):
+    """One unpaired item per reviewed request, labelled by final_input_decision. 'unclear' items are
     run and saved, but stay out of the benign/harmful summaries."""
     kinds = {"allow": "benign", "block": "harmful", "unclear": "unclear"}
     items, seen = [], set()
@@ -297,10 +282,11 @@ def financial_items(rows, n=None):
         if r["idx"] in seen:
             raise ValueError(f"repeated idx {r['idx']} in review rows")
         seen.add(r["idx"])
-        decision = r["input_decision"].strip()
-        if decision not in kinds or not r["user_prompt"].strip():
+        decision = r["final_input_decision"].strip()
+        if decision not in kinds or not r[prompt_col].strip():
             raise ValueError(f"bad review row idx={r['idx']}: decision={decision!r}")
-        items.append(dict(pair_id=None, kind=kinds[decision], prompt=r["user_prompt"], category=r["policy_rules"],
+        items.append(dict(pair_id=None, kind=kinds[decision], prompt=r[prompt_col],
+                          category=r.get("policy_rules") or r.get("A_policy_rules", ""),
                           source_idx=r["idx"], label_policy_sha256=r["policy_sha256"]))
     return items
 
@@ -346,13 +332,10 @@ def run():
     domain = os.environ.get("DOMAIN", "medical")
     tag = target.split("/")[-1]
     ptxt, sha = load_policy(domain)
-    if domain == "financial":
-        n = int(os.environ["N"]) if "N" in os.environ else None
-        with open(FIN_DATA, encoding="utf-8-sig", newline="") as f:
-            items = financial_items(list(csv.DictReader(f)), n)
-    else:
-        n = int(os.environ.get("N", "15"))
-        items = build_items(n)
+    n = int(os.environ["N"]) if "N" in os.environ else None
+    path, prompt_col = REVIEW[domain]
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        items = reviewed_items(list(csv.DictReader(f)), prompt_col, n)
     stale = {it["label_policy_sha256"][:12] for it in items if "label_policy_sha256" in it} - {sha[:12]}
     if stale:  # labels were made against other policy text: review them again before any claim
         print(f"WARNING: labels use policy sha {sorted(stale)}, running policy sha {sha[:12]}", flush=True)
