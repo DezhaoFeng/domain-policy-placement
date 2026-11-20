@@ -23,18 +23,17 @@ GUARDS = {"llamaguard": "meta-llama/Llama-Guard-3-8B", "qwen3guard": "Qwen/Qwen3
 
 
 def load_items():
-    """Human input labels. Medical: A's label with the pending review suggestion applied
-    (change_to_block / change_to_allow); these are not yet confirmed by both annotators."""
+    """Final human input labels (majority vote, column final_input_decision). The README guard
+    table was computed before these existed (medical: A + review suggestion; financial: Tracy)."""
     items = []
     with open(HERE / "medical_policy_review_25.csv", encoding="utf-8-sig", newline="") as f:
         for r in csv.DictReader(f):
-            lab = r["A_input_decision"].strip()
-            lab = {"change_to_block": "block", "change_to_allow": "allow"}.get(r["suggested_action"].strip(), lab)
-            items.append(dict(domain="medical", idx=int(r["idx"]), prompt=r["prompt"], label=lab))
+            items.append(dict(domain="medical", idx=int(r["idx"]), prompt=r["prompt"],
+                              label=r["final_input_decision"].strip()))
     with open(HERE / "data" / "financial_policy_review_first25_only.csv", encoding="utf-8-sig", newline="") as f:
         for r in csv.DictReader(f):
             items.append(dict(domain="financial", idx=int(r["idx"]), prompt=r["user_prompt"],
-                              label=r["input_decision"].strip()))
+                              label=r["final_input_decision"].strip()))
     return [it for it in items if it["label"] in ("allow", "block")]
 
 
