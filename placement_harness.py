@@ -126,7 +126,7 @@ def parse_guard(raw):
 CONFIGS = [f"M{m}I{i}O{o}" for m, i, o in itertools.product((0, 1), repeat=3)] + ["G0M0", "G0M1"]
 
 def parse_config(cfg):
-    return (int(cfg[1]), None, None) if cfg.startswith("G0") else (int(cfg[1]), int(cfg[3]), int(cfg[5]))
+    return (int(cfg[3]), None, None) if cfg.startswith("G0") else (int(cfg[1]), int(cfg[3]), int(cfg[5]))
 
 def blocked(g):  # invalid output is never a pass
     return g["verdict"] != "safe"
@@ -182,6 +182,7 @@ def _rand_atom(rng):
             "output": {m: {a: rv() for a in ARMS} for m in (0, 1)}}
 
 def selfcheck():
+    assert parse_config("G0M1") == (1, None, None), "G0M1 must deliver the M1 answer"  # live_reference shares parse_config
     rng = random.Random(1)
     for _ in range(300):
         atom = _rand_atom(rng)
