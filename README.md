@@ -116,6 +116,7 @@ Relevant prior work includes [FinGuard](https://arxiv.org/abs/2605.29427), [The 
 | `summarizer_usage.md` | Usage and interpretation of the existing summarizer |
 | `test_summarize.py` | Synthetic-data tests for result reconstruction and summarization |
 | `test_placement_harness.py` | No-GPU tests with fake models for domain selection, resume isolation, interrupted runs, rendered prompts and label versions |
+| `testset_tracy_blank_2026-11-25.csv` | Blank test-set sheet for the second annotator (Tracy): prompts only, shuffled within domain, no dataset benign/harmful labels, categories, sources or first annotator's labels; matched back on prompt text |
 | `medical_policy_review_B_blank.csv` | Blank table for the second annotator, without earlier labels, suggestions or model answers |
 | `review/joint_review_2026-11-03.md` | Joint human review: open decisions, selected cases with full answers, both label tables and the boundary examples. The second annotator should finish the blank table first |
 | `s6_rubric.md` | Legacy medical annotation rubric for the earlier stacking experiment; the placement experiment uses a separate rubric covering refusal, compliance and minimum-answer adequacy |
