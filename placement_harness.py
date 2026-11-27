@@ -32,7 +32,8 @@ Usage (cluster: ~/gptoss_venv/bin/python, which has the MXFP4 kernels the guard 
   DOMAIN=financial TARGET_MODEL=... python placement_harness.py --run
 
 DOMAIN: medical (default) or financial. Both run the human-reviewed development requests
-(REVIEW), labelled by final_input_decision; N = first N of them (default all). TARGET_REVISION overrides the pinned answering
+(REVIEW), labelled by final_input_decision; ITEMS_CSV = another file in the same format (prompt column "prompt"),
+e.g. the test set; N = first N of them (default all). TARGET_REVISION overrides the pinned answering
 model revision in TARGET_REVS. Output files carry the domain, policy sha and a hash of the run setup
 (prompts, N, models, token caps, task text, rendered guard messages), so a changed setup
 starts fresh instead of resuming from old results. Code outside that setup is not hashed.
@@ -334,7 +335,7 @@ def run():
     tag = target.split("/")[-1]
     ptxt, sha = load_policy(domain)
     n = int(os.environ["N"]) if "N" in os.environ else None
-    path, prompt_col = REVIEW[domain]
+    path, prompt_col = (Path(os.environ["ITEMS_CSV"]), "prompt") if "ITEMS_CSV" in os.environ else REVIEW[domain]
     with open(path, encoding="utf-8-sig", newline="") as f:
         items = reviewed_items(list(csv.DictReader(f)), prompt_col, n)
     stale = {it["label_policy_sha256"][:12] for it in items if "label_policy_sha256" in it} - {sha[:12]}
