@@ -32,7 +32,8 @@ Usage (cluster: ~/gptoss_venv/bin/python, which has the MXFP4 kernels the guard 
   DOMAIN=financial TARGET_MODEL=... python placement_harness.py --run
 
 DOMAIN: medical (default) or financial. Both run the human-reviewed development requests
-(REVIEW), labelled by final_input_decision; N = first N of them (default all). TARGET_REVISION overrides the pinned answering
+(REVIEW), labelled by final_input_decision; ITEMS_CSV = another file in the same format (prompt column "prompt"),
+e.g. the test set; N = first N of them (default all). TARGET_REVISION overrides the pinned answering
 model revision in TARGET_REVS. Output files carry the domain, policy sha and a hash of the run setup
 (prompts, N, models, token caps, task text, rendered guard messages), so a changed setup
 starts fresh instead of resuming from old results. Code outside that setup is not hashed.
@@ -126,7 +127,7 @@ def parse_guard(raw):
 CONFIGS = [f"M{m}I{i}O{o}" for m, i, o in itertools.product((0, 1), repeat=3)] + ["G0M0", "G0M1"]
 
 def parse_config(cfg):
-    return (int(cfg[1]), None, None) if cfg.startswith("G0") else (int(cfg[1]), int(cfg[3]), int(cfg[5]))
+    return (int(cfg[3]), None, None) if cfg.startswith("G0") else (int(cfg[1]), int(cfg[3]), int(cfg[5]))
 
 def blocked(g):  # invalid output is never a pass
     return g["verdict"] != "safe"
@@ -182,6 +183,7 @@ def _rand_atom(rng):
             "output": {m: {a: rv() for a in ARMS} for m in (0, 1)}}
 
 def selfcheck():
+    assert parse_config("G0M1") == (1, None, None), "G0M1 must deliver the M1 answer"  # live_reference shares parse_config
     rng = random.Random(1)
     for _ in range(300):
         atom = _rand_atom(rng)
@@ -333,7 +335,7 @@ def run():
     tag = target.split("/")[-1]
     ptxt, sha = load_policy(domain)
     n = int(os.environ["N"]) if "N" in os.environ else None
-    path, prompt_col = REVIEW[domain]
+    path, prompt_col = (Path(os.environ["ITEMS_CSV"]), "prompt") if "ITEMS_CSV" in os.environ else REVIEW[domain]
     with open(path, encoding="utf-8-sig", newline="") as f:
         items = reviewed_items(list(csv.DictReader(f)), prompt_col, n)
     stale = {it["label_policy_sha256"][:12] for it in items if "label_policy_sha256" in it} - {sha[:12]}

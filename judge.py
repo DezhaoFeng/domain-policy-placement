@@ -37,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 RUBRIC = HERE / "judge_rubric.md"
 API_URL = "https://api.deepseek.com/chat/completions"
 JUDGE_MODEL = os.environ.get("JUDGE_MODEL", "deepseek-flash")  # explicit id; the "deepseek-chat" alias resolved to it on 2026-11-12
-SETTINGS = dict(temperature=0, max_tokens=500, response_format={"type": "json_object"})
+SETTINGS = dict(temperature=0, max_tokens=4000, response_format={"type": "json_object"})  # deepseek-flash reasons first; 500 left empty content
 MAX_ATTEMPTS = 3          # fixed before evaluation (judge_rubric.md, output validation)
 MUSE_BATCH = 10           # items per Muse file; small batches keep a chat judge on track
 VALUES = dict(refused={"yes", "no", "unclear"}, compliant={"yes", "no", "unclear"},
